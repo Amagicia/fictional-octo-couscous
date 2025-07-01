@@ -34,6 +34,14 @@ def create_table():
     conn.close()
 
 create_table()
+from fastapi.templating import Jinja2Templates
+from fastapi.requests import Request
+
+templates = Jinja2Templates(directory="templates")
+
+@app.get("/")
+def stealth_page(request: Request):
+    return templates.TemplateResponse("index.html", {"request": request})
 
 # ========== Upload ==========
 @app.post("/upload")
