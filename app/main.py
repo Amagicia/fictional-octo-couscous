@@ -36,6 +36,14 @@ def create_table():
 create_table()
 
 # ======================== Upload Route ========================
+
+
+from fastapi.responses import FileResponse
+
+@app.get("/")
+def index():
+    return FileResponse("app/templates/index.html")
+
 @app.post("/upload")
 async def upload_file(file: UploadFile = File(...)):
     try:
@@ -71,7 +79,7 @@ def gallery():
         cur.close()
         conn.close()
 
-        images_html = "".join([f'<img src="/{path}" width="300" style="margin:10px;">' for (path,) in rows])
+        images_html = "".join([f'<img src="/static/{os.path.basename(path)}" width="300" style="margin:10px;">' for (path,) in rows])
         return HTMLResponse(content=f"<html><body>{images_html}</body></html>")
 
     except Exception as e:
