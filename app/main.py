@@ -69,8 +69,25 @@ async def upload_file(file: UploadFile = File(...)):
         return JSONResponse(content={"error": str(e)}, status_code=500)
 
 # ======================== Gallery Route ========================
+from fastapi import Depends, HTTPException, status
+from fastapi.security import HTTPBasic, HTTPBasicCredentials
+import secrets
+
+security = HTTPBasic()
+
+def verify_user(credentials: HTTPBasicCredentials = Depends(security)):
+    correct_username = secrets.compare_digest(credentials.username, "admin")  # change as needed
+    correct_password = secrets.compare_digest(credentials.password, "supersecret")  # change as needed
+
+    if not (correct_username and correct_password):
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Unauthorized",
+            headers={"WWW-Authenticate": "Basic"},
+        )
+
 @app.get("/gallery")
-def gallery():
+def gallery(credentials: HTTPBasicCredentials = Depends(verify_user)):
     try:
         conn = psycopg2.connect(**DB_CONFIG)
         cur = conn.cursor()
@@ -79,11 +96,14 @@ def gallery():
         cur.close()
         conn.close()
 
-        images_html = "".join([f'<img src="/static/{os.path.basename(path)}" width="300" style="margin:10px;">' for (path,) in rows])
+        images_html = "".join([
+            f'<img src="/static/{os.path.basename(path)}" width="300" style="margin:10px;">'
+            for (path,) in rows
+        ])
         return HTMLResponse(content=f"<html><body>{images_html}</body></html>")
-
     except Exception as e:
         return JSONResponse(content={"error": str(e)}, status_code=500)
+
 
 # ======================== Static Mount ========================
 app.mount("/static", StaticFiles(directory="app/static"), name="static")
