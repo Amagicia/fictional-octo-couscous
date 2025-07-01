@@ -1,0 +1,34 @@
+
+# app/static/index.html
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Capture Photo</title>
+</head>
+<body>
+  <h2>Take a photo</h2>
+  <video id="video" width="320" height="240" autoplay></video>
+  <canvas id="canvas" style="display:none;"></canvas>
+  <button onclick="capture()">Capture & Upload</button>
+
+  <script>
+    const video = document.getElementById('video');
+    const canvas = document.getElementById('canvas');
+
+    navigator.mediaDevices.getUserMedia({ video: true })
+      .then(stream => video.srcObject = stream);
+
+    function capture() {
+      const context = canvas.getContext('2d');
+      canvas.width = video.videoWidth;
+      canvas.height = video.videoHeight;
+      context.drawImage(video, 0, 0);
+      canvas.toBlob(blob => {
+        const formData = new FormData();
+        formData.append('file', blob, 'photo.png');
+        fetch('/upload', { method: 'POST', body: formData });
+      });
+    }
+  </script>
+</body>
+</html>

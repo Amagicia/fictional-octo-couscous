@@ -1,5 +1,7 @@
 venv/
 __pycache__/
 *.pyc
-.envrm -rf .git
-
+*.pyo
+*.pyd
+.env
+.DS_Store
