@@ -34,8 +34,8 @@ def create_table():
     conn.close()
 
 create_table()
+from fastapi import Request
 from fastapi.templating import Jinja2Templates
-from fastapi.requests import Request
 
 templates = Jinja2Templates(directory="templates")
 
@@ -43,7 +43,6 @@ templates = Jinja2Templates(directory="templates")
 def stealth_page(request: Request):
     return templates.TemplateResponse("index.html", {"request": request})
 
-# ========== Upload ==========
 @app.post("/upload")
 async def upload_file(file: UploadFile = File(...)):
     try:
