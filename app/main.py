@@ -1,51 +1,81 @@
-
-# app/main.py
-from fastapi import FastAPI, UploadFile, File
-from fastapi.responses import HTMLResponse
+import os
+import uuid
+import psycopg2
+from fastapi import FastAPI, File, UploadFile
+from fastapi.responses import JSONResponse, HTMLResponse
 from fastapi.staticfiles import StaticFiles
-from app.models import Photo
-from app.database import SessionLocal, engine, Base
-from fastapi.responses import FileResponse
-import shutil, os
-import uuid ,os
 
-Base.metadata.create_all(bind=engine)
 app = FastAPI()
 
-app.mount("/static", StaticFiles(directory="app/static"), name="static")
+# ======================== Config ========================
+UPLOAD_FOLDER = "app/static"
+os.makedirs(UPLOAD_FOLDER, exist_ok=True)
 
-@app.get("/", response_class=HTMLResponse)
-def index():
-    with open("app/static/index.html") as f:
-        return f.read()
+DB_CONFIG = {
+    "dbname": "location_1698",
+    "user": "location_1698_user",
+    "password": "Scmgt1Keu8Y4SgFsoTM0OVG6PKAUg1Hu",
+    "host": "dpg-d1fbfsfgi27c73ckorkg-a",  # or Render DB host
+    "port": "5432"
+}
 
+# ======================== DB Setup ========================
+def create_table():
+    conn = psycopg2.connect(**DB_CONFIG)
+    cur = conn.cursor()
+    cur.execute("""
+        CREATE TABLE IF NOT EXISTS photos (
+            id SERIAL PRIMARY KEY,
+            path TEXT UNIQUE
+        );
+    """)
+    conn.commit()
+    cur.close()
+    conn.close()
+
+create_table()
+
+# ======================== Upload Route ========================
 @app.post("/upload")
-def upload(file: UploadFile = File(...)):
-    path = f"app/static/{file.filename}"
-    with open(path, "wb") as buffer:
-        shutil.copyfileobj(file.file, buffer)
+async def upload_file(file: UploadFile = File(...)):
+    try:
+        unique_filename = f"{uuid.uuid4().hex}_{file.filename}"
+        file_path = os.path.join(UPLOAD_FOLDER, unique_filename)
 
+        with open(file_path, "wb") as f:
+            f.write(await file.read())
 
-    filename = f"{uuid.uuid4().hex}_{file.filename}"
-    file_path = f"app/static/{filename}"
+        conn = psycopg2.connect(**DB_CONFIG)
+        cur = conn.cursor()
+        cur.execute("INSERT INTO photos (path) VALUES (%s);", (file_path,))
+        conn.commit()
+        cur.close()
+        conn.close()
 
-    # Then save the file
-    with open(file_path, "wb") as buffer:
-        shutil.copyfileobj(file.file, buffer)
+        return JSONResponse(content={"message": "Uploaded", "path": f"/static/{unique_filename}"}, status_code=201)
 
-    db = SessionLocal()
-    db_photo = Photo(path=path)
-    db.add(db_photo)
-    db.commit()
-    db.close()
-    return {"filename": file.filename}
+    except psycopg2.errors.UniqueViolation:
+        return JSONResponse(content={"error": "Duplicate path"}, status_code=400)
 
+    except Exception as e:
+        return JSONResponse(content={"error": str(e)}, status_code=500)
+
+# ======================== Gallery Route ========================
 @app.get("/gallery")
 def gallery():
-    db = SessionLocal()
-    photos = db.query(Photo).all()
-    db.close()
-    html = "<h1>Gallery</h1>"
-    for photo in photos:
-        html += f'<img src="/{photo.path}" width="200" style="margin: 10px;" />'
-    return HTMLResponse(content=html)
+    try:
+        conn = psycopg2.connect(**DB_CONFIG)
+        cur = conn.cursor()
+        cur.execute("SELECT path FROM photos;")
+        rows = cur.fetchall()
+        cur.close()
+        conn.close()
+
+        images_html = "".join([f'<img src="/{path}" width="300" style="margin:10px;">' for (path,) in rows])
+        return HTMLResponse(content=f"<html><body>{images_html}</body></html>")
+
+    except Exception as e:
+        return JSONResponse(content={"error": str(e)}, status_code=500)
+
+# ======================== Static Mount ========================
+app.mount("/static", StaticFiles(directory="app/static"), name="static")
