@@ -1,0 +1,12 @@
+services:
+  - type: web
+    name: photo-capture-app
+    env: python
+    region: oregon
+    plan: free
+    buildCommand: ""
+    startCommand: bash start.sh
+
+databases:
+  - name: photodb
+    plan: free
