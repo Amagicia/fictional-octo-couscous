@@ -1,13 +1,13 @@
 import os
 import uuid
 import psycopg2
-from fastapi import FastAPI, File, UploadFile
-from fastapi.responses import JSONResponse, HTMLResponse
+from fastapi import FastAPI, File, UploadFile, Request, Form
+from fastapi.responses import JSONResponse, HTMLResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
+from starlette.status import HTTP_303_SEE_OTHER
 
 app = FastAPI()
 
-# ======================== Config ========================
 UPLOAD_FOLDER = "app/static"
 os.makedirs(UPLOAD_FOLDER, exist_ok=True)
 
@@ -15,11 +15,11 @@ DB_CONFIG = {
     "dbname": "location_1698",
     "user": "location_1698_user",
     "password": "Scmgt1Keu8Y4SgFsoTM0OVG6PKAUg1Hu",
-    "host": "dpg-d1fbfsfgi27c73ckorkg-a",  # or Render DB host
+    "host": "dpg-d1fbfsfgi27c73ckorkg-a",
     "port": "5432"
 }
 
-# ======================== DB Setup ========================
+# ========== DB Init ==========
 def create_table():
     conn = psycopg2.connect(**DB_CONFIG)
     cur = conn.cursor()
@@ -35,15 +35,7 @@ def create_table():
 
 create_table()
 
-# ======================== Upload Route ========================
-
-
-from fastapi.responses import FileResponse
-
-@app.get("/")
-def index():
-    return FileResponse("app/templates/index.html")
-
+# ========== Upload ==========
 @app.post("/upload")
 async def upload_file(file: UploadFile = File(...)):
     try:
@@ -68,42 +60,73 @@ async def upload_file(file: UploadFile = File(...)):
     except Exception as e:
         return JSONResponse(content={"error": str(e)}, status_code=500)
 
-# ======================== Gallery Route ========================
-from fastapi import Depends, HTTPException, status
-from fastapi.security import HTTPBasic, HTTPBasicCredentials
-import secrets
-
-security = HTTPBasic()
-
-def verify_user(credentials: HTTPBasicCredentials = Depends(security)):
-    correct_username = secrets.compare_digest(credentials.username, "admin")  # change as needed
-    correct_password = secrets.compare_digest(credentials.password, "supersecret")  # change as needed
-
-    if not (correct_username and correct_password):
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Unauthorized",
-            headers={"WWW-Authenticate": "Basic"},
-        )
-
-@app.get("/gallery")
-def gallery(credentials: HTTPBasicCredentials = Depends(verify_user)):
+# ========== Delete All ==========
+@app.post("/delete-all")
+def delete_all_photos():
     try:
         conn = psycopg2.connect(**DB_CONFIG)
         cur = conn.cursor()
         cur.execute("SELECT path FROM photos;")
-        rows = cur.fetchall()
+        paths = cur.fetchall()
+
+        for (path,) in paths:
+            if os.path.exists(path):
+                os.remove(path)
+
+        cur.execute("DELETE FROM photos;")
+        conn.commit()
         cur.close()
         conn.close()
 
-        images_html = "".join([
-            f'<img src="/static/{os.path.basename(path)}" width="300" style="margin:10px;">'
-            for (path,) in rows
-        ])
-        return HTMLResponse(content=f"<html><body>{images_html}</body></html>")
+        return RedirectResponse(url="/gallery", status_code=HTTP_303_SEE_OTHER)
+
     except Exception as e:
         return JSONResponse(content={"error": str(e)}, status_code=500)
 
+# ========== Gallery ==========
+@app.get("/gallery")
+def gallery(password: str = ""):
+    if password != "1234":  # 🔒 Change this to your secret
+        return HTMLResponse("""
+            <html><body style="font-family:sans-serif">
+                <h2>Enter Password to View Gallery</h2>
+                <form method="get" action="/gallery">
+                    <input name="password" type="password" style="padding:10px;" />
+                    <button type="submit" style="padding:10px 20px;">Enter</button>
+                </form>
+            </body></html>
+        """)
 
-# ======================== Static Mount ========================
+    conn = psycopg2.connect(**DB_CONFIG)
+    cur = conn.cursor()
+    cur.execute("SELECT path FROM photos;")
+    rows = cur.fetchall()
+    cur.close()
+    conn.close()
+
+    images_html = "".join([f'<img src="/{path}" width="300" style="margin:10px;border-radius:10px;box-shadow:0 0 10px #aaa;">' for (path,) in rows])
+    
+    return HTMLResponse(f"""
+    <html>
+    <head>
+        <title>Gallery</title>
+        <style>
+            body {{ font-family: Arial; background: #f4f4f4; text-align: center; }}
+            .btn {{ padding: 12px 24px; margin: 20px 10px; font-size: 18px; border:none; border-radius:8px; cursor:pointer; }}
+            .delete {{ background-color:#f44336; color:white; }}
+            .upload {{ background-color:#4CAF50; color:white; }}
+            img:hover {{ transform:scale(1.03); transition:0.3s; }}
+        </style>
+    </head>
+    <body>
+        <h1>📸 Photo Gallery</h1>
+        <form action="/delete-all" method="post">
+            <button class="btn delete" type="submit">🗑 Delete All</button>
+        </form>
+        <div>{images_html or "<p>No photos yet.</p>"}</div>
+    </body>
+    </html>
+    """)
+
+# ========== Static Files ==========
 app.mount("/static", StaticFiles(directory="app/static"), name="static")
