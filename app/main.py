@@ -7,6 +7,7 @@ from app.models import Photo
 from app.database import SessionLocal, engine, Base
 from fastapi.responses import FileResponse
 import shutil, os
+import uuid ,os
 
 Base.metadata.create_all(bind=engine)
 app = FastAPI()
@@ -23,6 +24,15 @@ def upload(file: UploadFile = File(...)):
     path = f"app/static/{file.filename}"
     with open(path, "wb") as buffer:
         shutil.copyfileobj(file.file, buffer)
+
+
+    filename = f"{uuid.uuid4().hex}_{file.filename}"
+    file_path = f"app/static/{filename}"
+
+    # Then save the file
+    with open(file_path, "wb") as buffer:
+        shutil.copyfileobj(file.file, buffer)
+
     db = SessionLocal()
     db_photo = Photo(path=path)
     db.add(db_photo)
